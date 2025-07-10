@@ -1,21 +1,23 @@
 'use client';
+
 import { useState, useEffect } from 'react';
 
 export default function PixPayment() {
+  const [clientes, setClientes] = useState([]);
+  const [clienteSelecionado, setClienteSelecionado] = useState('');
   const [qrCode, setQRCode] = useState('');
   const [payload, setPayload] = useState('');
   const [showPix, setShowPix] = useState(false);
-  const [clientes, setClientes] = useState([]);
-  const [clienteSelecionado, setClienteSelecionado] = useState('');
   const [status, setStatus] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Carregar clientes cadastrados
+  // Carrega lista de clientes
   useEffect(() => {
     async function loadClientes() {
       try {
         const res = await fetch('/api/listar-clientes');
         const data = await res.json();
-        setClientes(data.items || []);
+        setClientes(data.data || []);
       } catch (err) {
         console.error('Erro ao carregar clientes:', err);
       }
@@ -24,6 +26,7 @@ export default function PixPayment() {
     loadClientes();
   }, []);
 
+  // Inicia o pagamento
   const handlePagar = async () => {
     if (!clienteSelecionado) {
       alert('Selecione um cliente.');
@@ -32,9 +35,13 @@ export default function PixPayment() {
 
     setStatus('');
     setShowPix(false);
+    setQRCode('');
+    setPayload('');
+    setLoading(true);
     localStorage.removeItem('paymentId');
 
     try {
+      // Cria cobrança
       const res = await fetch('/api/gerar-pagamento', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -42,37 +49,49 @@ export default function PixPayment() {
       });
 
       const data = await res.json();
+      console.log("Pagamento : ", data);
 
-      if (!data.paymentId) {
+      if (!data.invoiceNumber) {
+        setLoading(false);
         alert('Erro ao gerar pagamento.');
         return;
       }
 
-      setQRCode(data.qrCodeImage);
-      setPayload(data.payload);
-      setShowPix(true);
-      localStorage.setItem('paymentId', data.paymentId);
+      const invoiceNumber = data.invoiceNumber;
+      localStorage.setItem('paymentId', invoiceNumber);
 
-      checkStatus();
+      // Busca QR Code e chave
+      const qrRes = await fetch(`/api/pix-qrcode?id=${invoiceNumber}`);
+      const qrData = await qrRes.json();
+
+      setQRCode(qrData.qrCodeImage);
+      setPayload(qrData.payload);
+      setShowPix(true);
+      setLoading(false);
+
+      // Verifica status em loop
+      checkStatus(invoiceNumber);
     } catch (err) {
-      console.error(err);
+      setLoading(false);
+      console.error('Erro ao gerar cobrança:', err);
       alert('Erro ao gerar pagamento.');
     }
   };
 
+  // Copia a chave para área de transferência
   const copyPix = () => {
     navigator.clipboard.writeText(payload).then(() => {
       alert('Chave PIX copiada!');
     });
   };
 
-  const checkStatus = () => {
+  // Verifica status do pagamento periodicamente
+  const checkStatus = (invoiceNumber) => {
     const interval = setInterval(async () => {
-      const paymentId = localStorage.getItem('paymentId');
-      if (!paymentId) return;
-
       try {
-        const res = await fetch(`/api/status-pagamento?paymentId=${paymentId}`);
+
+        let id = invoiceNumber
+        const res = await fetch(`/api/status-pagamento/${id}`);
         const data = await res.json();
 
         if (data.status === 'RECEIVED') {
@@ -90,6 +109,8 @@ export default function PixPayment() {
 
   return (
     <div className="bg-white p-6 rounded shadow w-full max-w-md text-center">
+      <h1 className="text-xl font-semibold mb-4">Pagamento via PIX</h1>
+
       <div className="mb-4">
         <label className="block text-sm font-medium mb-1">Selecione o Cliente:</label>
         <select
@@ -108,21 +129,26 @@ export default function PixPayment() {
 
       <button
         onClick={handlePagar}
-        className="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition"
+        disabled={loading}
+        className={`bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition ${
+          loading ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
       >
-        Pagar R$29,90
+        {loading ? 'Gerando cobrança...' : 'Pagar R$29,90'}
       </button>
 
       {showPix && (
         <>
-          <p className="mt-6 mb-2">Escaneie ou copie a chave:</p>
+          <p className="mt-6 mb-2 font-medium">Escaneie ou copie a chave para pagar:</p>
+
           {qrCode && (
             <img
-              src={`image/png;base64,${qrCode}`}
+              src={`data:image/png;base64,${qrCode}`}
               alt="QR Code PIX"
               className="mx-auto mb-4 w-48 h-48"
             />
           )}
+
           <pre
             onClick={copyPix}
             className="cursor-pointer bg-gray-100 p-2 rounded text-sm overflow-x-auto"
@@ -134,7 +160,7 @@ export default function PixPayment() {
 
       {status === 'success' && (
         <div className="mt-4 text-green-600 font-bold">
-          ✅ Pagamento realizado com sucesso!
+          ✅ Pagamento confirmado com sucesso!
         </div>
       )}
 

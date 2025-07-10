@@ -1,31 +1,46 @@
 import axios from 'axios';
 
 const ASAAS_API = 'https://api-sandbox.asaas.com/v3/payments';
-const ASAAS_TOKEN = process.env.ASAAS_TOKEN;
-
-export async function POST() {
+const ASAAS_TOKEN = "$" + process.env.ASAAS_TOKEN;
+const headers = {
+    'access_token': ASAAS_TOKEN,
+    'content-type': 'application/json',
+    'Accept': 'application/json',
+};
+export async function POST(req) {
     try {
+        const body = await req.json();
+        const { customerId } = body;
+        
+
+        if (!customerId) {
+            return Response.json({ error: 'ID do cliente não informado.' }, { status: 400 });
+        }
+
         const response = await axios.post(
-            ASAAS_API, {
-                customer: "6817605",
+            ASAAS_API,
+            {
+                customer: customerId,
                 billingType: 'PIX',
                 value: 29.9,
                 dueDate: new Date().toISOString().split('T')[0],
-            }, {
-                headers: {
-                    Authorization: `Bearer ${ASAAS_TOKEN}`,
-                    'Content-Type': 'application/json',
-                },
+                description : "Pagamento de acesso ao aplicativo Oráculo - Plano I"
+            },
+            {
+                headers: headers,
             }
         );
 
+        //console.log("Pagamento gerado com sucesso: ", response.data);
+        
         return Response.json({
             paymentId: response.data.id,
-            qrCodeImage: response.data.pixQrCode.encodedImage,
-            payload: response.data.pixQrCode.payload,
+            invoiceNumber: response.data.invoiceNumber,
+            qrCodeImage: response.data.paymentLink,
+            payload: response.data.invoiceUrl,
         });
     } catch (error) {
-        console.error(error.response);
+        console.error('Erro ao gerar pagamento:', error?.response?.data || error.message);
         return Response.json({ error: 'Erro ao gerar pagamento' }, { status: 500 });
     }
 }

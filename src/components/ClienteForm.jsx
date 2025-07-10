@@ -36,7 +36,7 @@ export default function ClienteForm() {
   };
 
   return (
-    <div className="bg-white p-6 rounded shadow w-full max-w-md">
+    <div className="bg-white p-6 rounded shadow w-full max-w-md text-gray-900">
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">Nome:</label>
